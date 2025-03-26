@@ -20,7 +20,8 @@ namespace openfhe
                                                                                      std::uint32_t pack_slots, int test_stage);
     void bitonic_sort(int plain_bits, int num_slots);
 
-    double bitonic_sort_query(int plain_bits, int num_slots);
+    double bitonic_sort_query(int plain_bits, int num_slots, int length, double precision, usint multDepth, Ciphertext<lbcrypto::DCRTPoly> &ciphertext_unsort,
+                              lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privatekey, std::vector<Ciphertext<lbcrypto::DCRTPoly>> &sync_matrix);
 
     void bitonic_sort_small(int plain_bits, int num_slots);
 
@@ -29,11 +30,17 @@ namespace openfhe
                                                                          std::uint32_t pack_slots, std::uint32_t k);
     double topk_sort_test(int plain_bits, int num_slots, int k);
 
-    void topk_sort(int plain_bits, int num_slots, int k);
+    std::vector<double> getKSmallestBySort(const std::vector<double> &nums, int N, int k);
 
-    void bitonic_sort_full_table_scan(int plain_bits, int length);
+    double topk_sort(int plain_bits, int num_slots, int length, int k, double precision,
+                     std::vector<double> topk_plain, usint multDepth, Ciphertext<lbcrypto::DCRTPoly> &ciphertext_unsort,
+                     lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privatekey, std::vector<Ciphertext<lbcrypto::DCRTPoly>> &sync_matrix);
 
-    void bitonic_sort_modular(int plain_bits, int blocks, int num_slots);
+    double bitonic_sort_full_table_scan(int plain_bits, int length);
+
+    std::vector<double> bitonic_sort_modular(int plain_bits, int blocks, int num_slots);
+
+    std::vector<double> bitonic_sort_modular_query(int plain_bits, int blocks, int num_slots);
 
     double sync_test_big(int num_column, int plain_bits, int num_slots);
 

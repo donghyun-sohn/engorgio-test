@@ -86,6 +86,7 @@ namespace openfhe
     double error_estimate_unbounded(std::vector<double> plain, std::vector<Ciphertext<lbcrypto::DCRTPoly>> &res,
                                     lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privateKey)
     {
+        // std::cout << "error_estimate_unbounded" << std::endl;
         auto cc = res[0]->GetCryptoContext();
         std::vector<double> error_vec;
         std::vector<double> dec_res;
@@ -97,12 +98,7 @@ namespace openfhe
             auto real_res = extractRealParts(Result);
             dec_res.insert(dec_res.end(), real_res.begin(), real_res.end());
         }
-        // std::cout << "Estimated precision: " << plaintextDec->GetLogPrecision() << std::endl;
 
-        for (int i = 0; i < 1000; i++)
-        {
-            std::cout << "Result dec: " << dec_res[i] << ", expect res: " << plain[i] << std::endl;
-        }
         double err = 0.;
         double err_max = 0.;
         // std::cout << "plain.size:" << plain.size() << std::endl;
@@ -114,6 +110,49 @@ namespace openfhe
             if (fabs(plain[i] - dec_res[i]) > 0.5)
                 // throw std::runtime_error(" err>0.5  ");
                 std::cout << "Result dec: " << dec_res[i] << ", expect res: " << plain[i] << std::endl;
+        }
+        // int maxPosition = max_element(error_vec.begin(), error_vec.end()) - error_vec.begin();
+        std::cout << "avg error:  " << err / int(plain.size()) << " ~ 2^" << std::log2(err / int(plain.size())) << std::endl;
+        return err_max;
+    }
+
+    double error_estimate_unbounded_modular(std::vector<double> plain, std::vector<std::vector<Ciphertext<lbcrypto::DCRTPoly>>> &res,
+                                            lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privateKey, int num_ct, int num_slots, int length)
+    {
+        // std::cout << "error_estimate_unbounded" << std::endl;
+        auto cc = res[0][0]->GetCryptoContext();
+        std::vector<double> error_vec;
+        std::vector<double> dec_res;
+        Plaintext plaintextDec;
+        std::vector<double> merge0(num_slots), merge1(num_slots);
+        std::vector<Plaintext> plaintextDec0(num_ct), plaintextDec1(num_ct);
+        cc->Decrypt(privateKey, res[0][0], &plaintextDec0[0]);
+        cc->Decrypt(privateKey, res[1][0], &plaintextDec0[1]);
+
+        cc->Decrypt(privateKey, res[0][1], &plaintextDec1[0]);
+        cc->Decrypt(privateKey, res[1][1], &plaintextDec1[1]);
+        std::vector<std::complex<double>> Result00 = plaintextDec0[0]->GetCKKSPackedValue();
+        std::vector<std::complex<double>> Result10 = plaintextDec0[1]->GetCKKSPackedValue();
+        std::vector<std::complex<double>> Result01 = plaintextDec1[0]->GetCKKSPackedValue();
+        std::vector<std::complex<double>> Result11 = plaintextDec1[1]->GetCKKSPackedValue();
+        for (int j = 0; j < int(Result00.size()); j++)
+        {
+            merge0[j] += round(Result00[j].real()) + round(Result01[j].real()) * pow(2, 8);
+            merge1[j] += round(Result10[j].real()) + round(Result11[j].real()) * pow(2, 8);
+        }
+        merge0.insert(merge0.end(), merge1.begin(), merge1.end());
+        double err = 0.;
+        double err_max = 0.;
+
+        // std::cout << "plain.size:" << plain.size() << std::endl;
+        for (int i = 0; i < int(plain.size()); i++)
+        {
+            err_max = fabs(plain[i] - merge0[i]) > err_max ? fabs(plain[i] - merge0[i]) : err_max;
+            err += fabs(plain[i] - merge0[i]);
+            error_vec.push_back(fabs(plain[i] - merge0[i]));
+            if (fabs(plain[i] - merge0[i]) > 0.5)
+                // throw std::runtime_error(" err>0.5  ");
+                std::cout << "Result dec: " << merge0[i] << ", expect res: " << plain[i] << std::endl;
         }
         // int maxPosition = max_element(error_vec.begin(), error_vec.end()) - error_vec.begin();
         std::cout << "avg error:  " << err / int(plain.size()) << " ~ 2^" << std::log2(err / int(plain.size())) << std::endl;
@@ -557,7 +596,10 @@ namespace openfhe
         }
         end = std::chrono::system_clock::now();
         time_total = double(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
-
+        // cc->ClearEvalSumKeys();
+        // cc->ClearEvalMultKeys();
+        // cc->ClearEvalAutomorphismKeys();
+        // CryptoContextFactory<DCRTPoly>::ReleaseAllContexts();
         return time_total;
     }
 
@@ -780,8 +822,10 @@ namespace openfhe
         }
         end = std::chrono::system_clock::now();
         time_total = double(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
-
+        cc->ClearEvalSumKeys();
+        cc->ClearEvalMultKeys();
+        cc->ClearEvalAutomorphismKeys();
+        CryptoContextFactory<DCRTPoly>::ReleaseAllContexts();
         return time_total;
     }
-
 }

@@ -38,7 +38,7 @@ target_include_directories(ENGORGIO
     PUBLIC ${OPENFHE_SOURCE_DIR}/src/core/include
     PUBLIC ${OPENFHE_SOURCE_DIR}/src/pke/include
     PUBLIC ${OPENFHE_SOURCE_DIR}/src/binfhe/include
-    PUBLIC ${OPENFHE_SOURCE_DIR}/thirdparty/cereal/include
+    PUBLIC ${OPENFHE_SOURCE_DIR}/third-party/cereal/include
     PUBLIC ${OPENFHE_SOURCE_DIR}/build/src/core  
     PUBLIC src
 )

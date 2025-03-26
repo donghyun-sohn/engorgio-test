@@ -14,7 +14,7 @@ std::vector<double> splitNumber(double x, int w, int Bg)
     std::vector<double> result;
     for (int i = 0; i < w; ++i)
     {
-        int start_bit = (w - 1 - i) * Bg;
+        int start_bit = i * Bg;
         int extracted = extractBits(x, start_bit, Bg);
         result.push_back(extracted);
     }
@@ -34,14 +34,14 @@ std::vector<double> extractRealParts(const std::vector<std::complex<double>> &en
 std::vector<std::vector<double>> quantization(std::vector<double> vec, uint32_t precision, uint32_t Bg)
 {
     int w = precision / Bg;
-    std::cout << "w:" << w << std::endl;
     int length = vec.size();
     std::vector<std::vector<double>>
-        quant_plain(length, std::vector<double>(w));
+        quant_plain(w, std::vector<double>(length));
     for (int i = 0; i < length; i++)
     {
-        quant_plain[i] = splitNumber(vec[i], w, Bg);
-        std::cout << quant_plain[i][0] << std::endl;
+        auto split_vi = splitNumber(vec[i], w, Bg);
+        quant_plain[0][i] = split_vi[0];
+        quant_plain[1][i] = split_vi[1];
     }
     return quant_plain;
 }
@@ -78,12 +78,13 @@ std::vector<double> merge_quant(std::vector<std::vector<double>> vec,
                                 uint32_t precision, uint32_t Bg)
 {
     int w = precision / Bg;
-    int length = vec.size();
+    int length = vec[0].size();
     std::vector<double>
         merged_plain(length);
     for (int i = 0; i < length; i++)
     {
-        merged_plain[i] = combineNumber(vec[i], w, Bg);
+        std::vector<double> temp_v = {vec[0][i], vec[1][i]};
+        merged_plain[i] = combineNumber(temp_v, w, Bg);
     }
     return merged_plain;
 }
@@ -145,9 +146,9 @@ int test_quant(uint32_t num_input, uint32_t num_slots, uint32_t plain_precision,
     {
         merge_input[i] = merge_quant(quant_input[i], plain_precision, plain_bits - 1);
     }
-    for (int i = 0; i < 16; i++)
+    for (int i = 0; i < input.size(); i++)
     {
-        std::cout << "input:" << input[i] << ", quant_input: (" << quant_input[0][i][0] << "," << quant_input[0][i][1] << "), merge_input: " << merge_input[0][i] << std::endl;
+        std::cout << "input:" << input[i] << ", quant_input: (" << quant_input[0][0][i] << "," << quant_input[0][1][i] << "), merge_input: " << merge_input[0][i] << std::endl;
     }
 
     return 0;

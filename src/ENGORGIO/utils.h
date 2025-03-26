@@ -20,6 +20,9 @@ namespace openfhe
     double error_estimate(std::vector<double> plain, Ciphertext<lbcrypto::DCRTPoly> &res,
                           lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privateKey, size_t num_slots);
 
+    double error_estimate_unbounded_modular(std::vector<double> plain, std::vector<std::vector<Ciphertext<lbcrypto::DCRTPoly>>> &res,
+                                            lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privateKey, int num_ct, int num_slots, int length);
+
     double error_estimate_modular(std::vector<double> plain, std::vector<Ciphertext<lbcrypto::DCRTPoly>> &res,
                                   lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privateKey, size_t num_slots);
 

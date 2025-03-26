@@ -122,43 +122,94 @@ namespace openfhe
         cipher = cc->EvalAdd(cipher, 0.5);
     }
 
-    void HomComp(Ciphertext<lbcrypto::DCRTPoly> &a, Ciphertext<lbcrypto::DCRTPoly> &b, double precision,
-                 std::uint32_t polyDegree)
-    {
-        auto cc = a->GetCryptoContext();
-        auto ciphertext_sub = cc->EvalSub(a, b);
-
-        auto result_sub = cc->EvalSign(ciphertext_sub, 0, -precision, precision, polyDegree);
-        Homround(result_sub);
-    }
-
     void comp_greater_than(Ciphertext<lbcrypto::DCRTPoly> &ct1, Ciphertext<lbcrypto::DCRTPoly> &ct2, double precision,
-                           std::vector<double> coefficients, Ciphertext<lbcrypto::DCRTPoly> &res,
+                           int polyDegree, Ciphertext<lbcrypto::DCRTPoly> &res,
                            lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privateKey)
     {
         auto cc = ct1->GetCryptoContext();
         // ct1-ct2 >0 -> 1; ct1-ct2 ==0 -> 0.5; ct1-ct2 <0 -> 0
         auto ciphertext_sub = cc->EvalSub(ct1, ct2);
-        auto ciphertext_sign = cc->EvalChebyshevSeries(ciphertext_sub, coefficients, -precision, precision);
+        auto ciphertext_sign = cc->EvalSign(ciphertext_sub, 3, -precision, precision, polyDegree);
         Homround(ciphertext_sign);
         // ct1-ct2 >0 -> 2; ct1-ct2 ==0 -> 1; ct1-ct2 <0 -> 0
-        auto ciphertext_greater_equal_2 = MultByInteger(ciphertext_sign, 2.0);
+        // comp(a==b)
+        // ct2-ct1
+        auto ciphertext_sub_neg = cc->EvalNegate(ciphertext_sign);
+        auto result_sub_neg = cc->EvalAdd(ciphertext_sub_neg, 1.0);
+        //(ct2-ct1)*(ct1-ct2)
+        auto result_temp = cc->EvalMult(result_sub_neg, ciphertext_sign);
+        auto result_equal = MultByInteger(result_temp, 2.0);
+
+        // get equal ct1-ct2 ==0 -> 1, else 0
+        // Homround(result_equal);
+
+        res = cc->EvalSub(ciphertext_sign, result_equal);
+        // int bootprecision = itboot(res, privateKey);
+        // std::cout << "compres bootprecision : " << bootprecision << std::endl;
+        // res = cc->EvalBootstrap(res, 2, bootprecision);
+        // Homround(res);
+    }
+    void comp_equal(Ciphertext<lbcrypto::DCRTPoly> &ct1, Ciphertext<lbcrypto::DCRTPoly> &ct2, double precision,
+                    int polyDegree, Ciphertext<lbcrypto::DCRTPoly> &res)
+    {
+        auto cc = ct1->GetCryptoContext();
+        // ct1-ct2 >0 -> 1; ct1-ct2 ==0 -> 0.5; ct1-ct2 <0 -> 0
+        auto ciphertext_sub = cc->EvalSub(ct1, ct2);
+        auto ciphertext_sign = cc->EvalSign(ciphertext_sub, 3, -precision - 10, precision + 10, polyDegree);
+        Homround(ciphertext_sign);
+        // ct1-ct2 >0 -> 2; ct1-ct2 ==0 -> 1; ct1-ct2 <0 -> 0
+        // auto ciphertext_greater_equal_2 = MultByInteger(ciphertext_sign, 2);
         // comp(a==b)
         // ct2-ct1
         auto ciphertext_sub_neg = cc->EvalNegate(ciphertext_sign);
         auto result_sub_neg = cc->EvalAdd(ciphertext_sub_neg, 1.0);
         //(ct2-ct1)*(ct1-ct2)
         auto result_equal = cc->EvalMult(result_sub_neg, ciphertext_sign);
-        auto result_equal_4 = MultByInteger(result_equal, 4.0);
+        res = MultByInteger(result_equal, 4);
         // get equal ct1-ct2 ==0 -> 1, else 0
-        Homround(result_equal_4);
-
-        auto ciphertext_comp_greater = cc->EvalSub(ciphertext_greater_equal_2, result_equal_4);
-        res = cc->EvalMult(ciphertext_comp_greater, 0.5);
-        int bootprecision = itboot(res, privateKey);
-        std::cout << "compres bootprecision : " << bootprecision << std::endl;
-        res = cc->EvalBootstrap(res, 2, bootprecision);
         // Homround(res);
+    }
+    void comp_greater_than_modular(std::vector<Ciphertext<lbcrypto::DCRTPoly>> &ciphertext_a, std::vector<Ciphertext<lbcrypto::DCRTPoly>> &ciphertext_b, double precision,
+                                   int polyDegree, Ciphertext<lbcrypto::DCRTPoly> &res,
+                                   lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privateKey)
+    {
+        auto cc = ciphertext_a[0]->GetCryptoContext();
+        int block = ciphertext_a.size();
+        std::vector<Ciphertext<lbcrypto::DCRTPoly>> ciphertext_sub(block), result_sub(block), result_equal_comp(block),
+            ciphertext_comp_greater(block);
+        for (int i = block - 1; i >= 0; i--)
+        {
+            // comp(a>b) 1, 0.5, 0
+
+            ciphertext_sub[i] = cc->EvalSub(ciphertext_a[i], ciphertext_b[i]);
+            result_sub[i] = cc->EvalSign(ciphertext_sub[i], 3, -precision, precision, polyDegree);
+            Homround(result_sub[i]);
+
+            // comp(a==b) 1, 0
+
+            auto ciphertext_sub_neg = cc->EvalNegate(result_sub[i]);
+            auto result_sub_neg = cc->EvalAdd(ciphertext_sub_neg, 1.0);
+
+            auto result_equal = cc->EvalMult(result_sub_neg, result_sub[i]);
+            result_equal_comp[i] = MultByInteger(result_equal, 2.0);
+            ciphertext_comp_greater[i] = cc->EvalSub(result_sub[i], result_equal_comp[i]);
+            result_equal_comp[i] = MultByInteger(result_equal_comp[i], 2.0);
+            // Homround(result_equal_comp[i]);
+            // Homround(ciphertext_comp_greater[i]);
+        }
+
+        for (int i = 0; i < block; i++)
+        {
+            if (i == 0)
+                res = ciphertext_comp_greater[i];
+            else
+            {
+                auto ai_sub_bi = cc->EvalSub(res, ciphertext_comp_greater[i]);
+                auto equal_mul_sub = cc->EvalMult(result_equal_comp[i], ai_sub_bi);
+                res = cc->EvalAdd(equal_mul_sub, ciphertext_comp_greater[i]);
+            }
+        }
+        Homround(res);
     }
     // check first boot precision
     int itboot(Ciphertext<lbcrypto::DCRTPoly> &res, lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privateKey)
@@ -181,24 +232,41 @@ namespace openfhe
     }
 
     // ct1==ct2?1:0
-    void comp_equal(Ciphertext<lbcrypto::DCRTPoly> &ct1, Ciphertext<lbcrypto::DCRTPoly> &ct2, double precision,
-                    std::vector<double> coefficients, Ciphertext<lbcrypto::DCRTPoly> &res)
+    void comp_equal_modular(std::vector<Ciphertext<lbcrypto::DCRTPoly>> &ciphertext_a, std::vector<Ciphertext<lbcrypto::DCRTPoly>> &ciphertext_b, double precision,
+                            int polyDegree, Ciphertext<lbcrypto::DCRTPoly> &res)
     {
-        auto cc = ct1->GetCryptoContext();
-        // ct1-ct2 >0 -> 1; ct1-ct2 ==0 -> 0.5; ct1-ct2 <0 -> 0
-        auto ciphertext_sub = cc->EvalSub(ct1, ct2);
-        auto ciphertext_sign = cc->EvalChebyshevSeries(ciphertext_sub, coefficients, -precision, precision);
-        Homround(ciphertext_sign);
-        // ct1-ct2 >0 -> 2; ct1-ct2 ==0 -> 1; ct1-ct2 <0 -> 0
-        auto ciphertext_greater_equal_2 = MultByInteger(ciphertext_sign, 2);
-        // comp(a==b)
-        // ct2-ct1
-        auto ciphertext_sub_neg = cc->EvalNegate(ciphertext_sign);
-        auto result_sub_neg = cc->EvalAdd(ciphertext_sub_neg, 1.0);
-        //(ct2-ct1)*(ct1-ct2)
-        auto result_equal = cc->EvalMult(result_sub_neg, ciphertext_sign);
-        res = MultByInteger(result_equal, 4);
-        // get equal ct1-ct2 ==0 -> 1, else 0
+        auto cc = ciphertext_a[0]->GetCryptoContext();
+        int block = ciphertext_a.size();
+        std::vector<Ciphertext<lbcrypto::DCRTPoly>> ciphertext_sub(block), result_sub(block), result_equal_comp(block),
+            ciphertext_comp_greater(block);
+        for (int i = block - 1; i >= 0; i--)
+        {
+            // comp(a>b) 1, 0.5, 0
+
+            ciphertext_sub[i] = cc->EvalSub(ciphertext_a[i], ciphertext_b[i]);
+            result_sub[i] = cc->EvalSign(ciphertext_sub[i], 3, -precision - 10, precision + 10, polyDegree);
+            Homround(result_sub[i]);
+
+            // comp(a==b) 1, 0
+
+            auto ciphertext_sub_neg = cc->EvalNegate(result_sub[i]);
+            auto result_sub_neg = cc->EvalAdd(ciphertext_sub_neg, 1.0);
+
+            auto result_equal = cc->EvalMult(result_sub_neg, result_sub[i]);
+            result_equal_comp[i] = MultByInteger(result_equal, 4.0);
+            ciphertext_comp_greater[i] = cc->EvalSub(result_sub[i], result_equal_comp[i]);
+        }
+        // mux
+        for (int i = 0; i < block; i++)
+        {
+
+            if (i == 0)
+                res = result_equal_comp[i];
+            else
+            {
+                res = cc->EvalMult(res, result_equal_comp[i]);
+            }
+        }
         Homround(res);
     }
 
@@ -638,9 +706,9 @@ namespace openfhe
         std::cout << "avg error: 2^" << std::log2(totalerr / 10) << std::endl;
     }
 
-    void Eval_modular_Strictly_greater_than(std::uint32_t plain_bits, std::uint32_t block)
+    double Eval_modular_Strictly_greater_than(std::uint32_t plain_bits, std::uint32_t block)
     {
-        std::cout << plain_bits << " plain_bits " << block << " Strictly modular greater test " << std::endl;
+        std::cout << plain_bits * block << " plain_bits greater comparison test " << std::endl;
         CCParams<CryptoContextCKKSRNS> parameters;
         parameters.SetSecurityLevel(HEStd_128_classic);
 #if NATIVEINT == 128
@@ -654,7 +722,7 @@ namespace openfhe
         parameters.SetScalingModSize(scalingModSize);
         parameters.SetFirstModSize(firstModSize);
         parameters.SetRingDim(65536 * 2);
-        std::uint32_t polyDegree = 59;
+        std::uint32_t polyDegree = 119;
         std::uint32_t multDepth = 20 + block;
 
         parameters.SetMultiplicativeDepth(multDepth);
@@ -663,7 +731,7 @@ namespace openfhe
         cc->Enable(KEYSWITCH);
         cc->Enable(LEVELEDSHE);
         cc->Enable(ADVANCEDSHE);
-        double precision = (1 << (plain_bits - 1) - 1);
+        double precision = (1 << (plain_bits - 1)) - 1;
         double lowerBound = -precision;
         double upperBound = precision;
         double bound = 3;
@@ -675,8 +743,6 @@ namespace openfhe
         usint ringDim = cc->GetRingDimension();
         int length = ringDim / 2;
 
-        std::cout << "CKKS scheme is using ring dimension " << ringDim << std::endl;
-        std::cout << "using polyDegree " << polyDegree << std::endl;
         std::vector<std::vector<std::complex<double>>> input_a_mod, input_b_mod;
         std::vector<double> input_a_plain(length, 0), input_b_plain(length, 0);
         // a0,a1...  b0,b1...
@@ -701,6 +767,7 @@ namespace openfhe
                 input_b_plain[i] += input_b_mod[j][i].real() * std::pow(2, j * plain_bits);
             }
         }
+
         double totalerr = 0;
         double err_max = 0;
         double totaltime = 0;
@@ -722,40 +789,8 @@ namespace openfhe
                 ciphertext_b.push_back(cc->Encrypt(keyPair.publicKey, plain_b));
             }
             start = std::chrono::system_clock::now();
-            for (int i = block - 1; i >= 0; i--)
-            {
-                // comp(a>b) 1, 0.5, 0
-
-                ciphertext_sub[i] = cc->EvalSub(ciphertext_a[i], ciphertext_b[i]);
-                result_sub[i] = cc->EvalSign(ciphertext_sub[i], bound, lowerBound, upperBound, polyDegree);
-                Homround(result_sub[i]);
-
-                // comp(a==b) 1, 0
-
-                auto ciphertext_sub_neg = cc->EvalNegate(result_sub[i]);
-                auto result_sub_neg = cc->EvalAdd(ciphertext_sub_neg, 1.0);
-
-                auto result_equal = cc->EvalMult(result_sub_neg, result_sub[i]);
-                result_equal_comp[i] = MultByInteger(result_equal, 2.0);
-                ciphertext_comp_greater[i] = cc->EvalSub(result_sub[i], result_equal_comp[i]);
-                result_equal_comp[i] = MultByInteger(result_equal_comp[i], 2.0);
-                // Homround(result_equal_comp[i]);
-                // Homround(ciphertext_comp_greater[i]);
-            }
-
             Ciphertext<lbcrypto::DCRTPoly> comp_res;
-            for (int i = 0; i < block; i++)
-            {
-                if (i == 0)
-                    comp_res = ciphertext_comp_greater[i];
-                else
-                {
-                    auto ai_sub_bi = cc->EvalSub(comp_res, ciphertext_comp_greater[i]);
-                    auto equal_mul_sub = cc->EvalMult(result_equal_comp[i], ai_sub_bi);
-                    comp_res = cc->EvalAdd(equal_mul_sub, ciphertext_comp_greater[i]);
-                }
-            }
-            std::cout << "number of levels remaining after comp: " << multDepth - comp_res->GetLevel() << std::endl;
+            comp_greater_than_modular(ciphertext_a, ciphertext_b, precision, polyDegree, comp_res, keyPair.secretKey);
             end = std::chrono::system_clock::now();
             Plaintext plaintextDec, plaintextDec_comp_res, plaintextDec_comp_res_equal;
 
@@ -791,15 +826,20 @@ namespace openfhe
             }
         }
 
-        std::cout << encodedLength << "slots amortize time: " << double((totaltime / num_test)) << "ms" << std::endl
-                  << std::endl;
+        std::cout << encodedLength << "slots amortize time: " << double((totaltime / num_test)) << "ms" << std::endl;
         std::cout << "avg error: 2^" << std::log2(totalerr / num_test) << std::endl;
-        std::cout << "max error: 2^" << std::log2(err_max / num_test) << std::endl;
+        std::cout << "max error: 2^" << std::log2(err_max / num_test) << std::endl
+                  << std::endl
+                  << std::endl;
+        cc->ClearEvalSumKeys();
+        cc->ClearEvalMultKeys();
+        cc->ClearEvalAutomorphismKeys();
+        return double((totaltime / num_test));
     }
 
-    void Eval_modular_Strictly_equal(std::uint32_t plain_bits, std::uint32_t block)
+    double Eval_modular_Strictly_equal(std::uint32_t plain_bits, std::uint32_t block)
     {
-        std::cout << plain_bits << " plain_bits " << block << " Strictly modular equal test " << std::endl;
+        std::cout << plain_bits * block << " plain_bits equality comparison test" << std::endl;
         CCParams<CryptoContextCKKSRNS> parameters;
 
         parameters.SetSecurityLevel(HEStd_128_classic);
@@ -844,8 +884,6 @@ namespace openfhe
         usint ringDim = cc->GetRingDimension();
         int length = ringDim / 2;
 
-        std::cout << "CKKS scheme is using ring dimension " << ringDim << std::endl;
-        std::cout << "using polyDegree " << polyDegree << std::endl;
         std::vector<std::vector<std::complex<double>>> input_a_mod, input_b_mod;
         std::vector<double> input_a_plain(length, 0), input_b_plain(length, 0);
         // a0,a1...  b0,b1...
@@ -956,10 +994,15 @@ namespace openfhe
                 std::cout << "wrong number:" << wrong << std::endl;
             }
         }
-        std::cout << encodedLength << "slots amortize time: " << double((totaltime / num_test)) << "ms" << std::endl
-                  << std::endl;
+        std::cout << encodedLength << "slots amortize time: " << double((totaltime / num_test)) << "ms" << std::endl;
         std::cout << "avg error: 2^" << std::log2(totalerr / num_test) << std::endl;
-        std::cout << "max error: 2^" << std::log2(err_max / num_test) << std::endl;
+        std::cout << "max error: 2^" << std::log2(err_max / num_test) << std::endl
+                  << std::endl
+                  << std::endl;
+        cc->ClearEvalSumKeys();
+        cc->ClearEvalMultKeys();
+        cc->ClearEvalAutomorphismKeys();
+        return double((totaltime / num_test));
     }
 
     void Eval_modular_greater_test(std::uint32_t plain_bits, std::uint32_t block)
@@ -1271,6 +1314,10 @@ namespace openfhe
             //     std::cout << "wrong number:" << wrong << std::endl;
             // }
         }
+        cc->ClearEvalSumKeys();
+        cc->ClearEvalMultKeys();
+        cc->ClearEvalAutomorphismKeys();
+        CryptoContextFactory<DCRTPoly>::ReleaseAllContexts();
         return totaltime / num_test;
     }
 
@@ -1423,7 +1470,10 @@ namespace openfhe
                 // std::cout << "wrong number:" << wrong << std::endl;
             }
         }
-
+        cc->ClearEvalSumKeys();
+        cc->ClearEvalMultKeys();
+        cc->ClearEvalAutomorphismKeys();
+        CryptoContextFactory<DCRTPoly>::ReleaseAllContexts();
         return totaltime / num_test;
     }
 }

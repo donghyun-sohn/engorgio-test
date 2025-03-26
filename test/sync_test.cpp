@@ -10,10 +10,10 @@ int main(int argc, char *argv[])
 {
     std::chrono::system_clock::time_point start, end;
     start = std::chrono::system_clock::now();
-    std::ifstream Sortfile("../../engorgio_sort.csv", std::ios::app);
+    std::ifstream Syncfile("../../engorgio_sync.csv", std::ios::app);
     std::vector<std::vector<std::string>> csvData;
     std::string line;
-    while (std::getline(Sortfile, line))
+    while (std::getline(Syncfile, line))
     {
         std::vector<std::string> row;
         std::stringstream ss(line);
@@ -24,32 +24,32 @@ int main(int argc, char *argv[])
         }
         csvData.push_back(row);
     }
-    Sortfile.close();
-    std::vector<double> sort_time;
-    sort_time = bitonic_sort_modular(8, 2, 32768);
-
-    // sort_time.push_back(bitonic_sort_full_table_scan(8, 65536 * 2) + sort_time[15] * 2);
-
+    Syncfile.close();
+    std::vector<double> sync_time;
+    for (int i = 8; i < 8193; i *= 2)
+    {
+        sync_time.push_back(sync_test_small(8, i));
+    }
     for (size_t i = 1; i < csvData.size(); i++)
     {
-        csvData[i][5] = std::to_string(sort_time[i + 1]);
+        csvData[i][3] = std::to_string(sync_time[i - 1]);
     }
-    std::ofstream outFile_sort("../../engorgio_sort.csv");
+    std::ofstream outFile_sync("../../engorgio_sync.csv");
     for (const auto &row : csvData)
     {
         for (size_t i = 0; i < row.size(); i++)
         {
-            outFile_sort << row[i];
+            outFile_sync << row[i];
             if (i < row.size() - 1)
             {
-                outFile_sort << ",";
+                outFile_sync << ",";
             }
         }
-        outFile_sort << std::endl;
+        outFile_sync << std::endl;
     }
-    outFile_sort.close();
+    outFile_sync.close();
     end = std::chrono::system_clock::now();
     double total_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000;
-    std::cout << "Sort test compute time:" << total_time << std::endl;
+    std::cout << "Sync test compute time:" << total_time << std::endl;
     return 0;
 }

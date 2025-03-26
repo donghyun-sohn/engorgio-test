@@ -22,11 +22,8 @@ namespace openfhe
 
     void Homround(Ciphertext<lbcrypto::DCRTPoly> &cipher);
 
-    void HomComp(Ciphertext<lbcrypto::DCRTPoly> &a, Ciphertext<lbcrypto::DCRTPoly> &b, double precision,
-                 std::uint32_t polyDegree);
-
     void comp_greater_than(Ciphertext<lbcrypto::DCRTPoly> &ct1, Ciphertext<lbcrypto::DCRTPoly> &ct2, double precision,
-                           std::vector<double> coefficients, Ciphertext<lbcrypto::DCRTPoly> &res,
+                           int polyDegree, Ciphertext<lbcrypto::DCRTPoly> &res,
                            lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privateKey);
 
     double CalculateApproximationError(const std::vector<std::complex<double>> &result,
@@ -35,7 +32,14 @@ namespace openfhe
     int itboot(Ciphertext<lbcrypto::DCRTPoly> &res, lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privateKey);
 
     void comp_equal(Ciphertext<lbcrypto::DCRTPoly> &ct1, Ciphertext<lbcrypto::DCRTPoly> &ct2, double precision,
-                    std::vector<double> coefficients, Ciphertext<lbcrypto::DCRTPoly> &res);
+                    int polyDegree, Ciphertext<lbcrypto::DCRTPoly> &res);
+
+    void comp_greater_than_modular(std::vector<Ciphertext<lbcrypto::DCRTPoly>> &ciphertext_a, std::vector<Ciphertext<lbcrypto::DCRTPoly>> &ciphertext_b, double precision,
+                                   int polyDegree, Ciphertext<lbcrypto::DCRTPoly> &res,
+                                   lbcrypto::PrivateKey<lbcrypto::DCRTPoly> &privateKey);
+
+    void comp_equal_modular(std::vector<Ciphertext<lbcrypto::DCRTPoly>> &ciphertext_a, std::vector<Ciphertext<lbcrypto::DCRTPoly>> &ciphertext_b, double precision,
+                            int polyDegree, Ciphertext<lbcrypto::DCRTPoly> &res);
 
     void comp_partial(Ciphertext<lbcrypto::DCRTPoly> &ct1, Ciphertext<lbcrypto::DCRTPoly> &ct2, double precision,
                       std::vector<double> &coefficients, Ciphertext<lbcrypto::DCRTPoly> &res,
@@ -52,9 +56,9 @@ namespace openfhe
 
     void Eval_modular_greater_than(std::uint32_t plain_bits, std::uint32_t block);
 
-    void Eval_modular_Strictly_greater_than(std::uint32_t plain_bits, std::uint32_t block);
+    double Eval_modular_Strictly_greater_than(std::uint32_t plain_bits, std::uint32_t block);
 
-    void Eval_modular_Strictly_equal(std::uint32_t plain_bits, std::uint32_t block);
+    double Eval_modular_Strictly_equal(std::uint32_t plain_bits, std::uint32_t block);
 
     void Eval_modular_greater_test(std::uint32_t plain_bits, std::uint32_t block);
 
