@@ -145,7 +145,7 @@ double Eval_E2E_q1(int records_num)
            aggregation_time = 0;
     std::chrono::system_clock::time_point start, end;
     Ciphertext<lbcrypto::DCRTPoly> comp_res_ge, comp_res_eq, comp_returnflag_YY, comp_returnflag_YN, comp_linestatus_YY, comp_linestatus_YN;
-
+    // filtering (can be parallel)
     start = std::chrono::system_clock::now();
 
     comp_greater_than_modular(ship_predict_ciphers, ship_data_ciphers, precision, polyDegree, comp_res_ge, keyPair.secretKey);
@@ -445,7 +445,7 @@ double Eval_E2E_q12(int records_num)
     double filtering_time = 0;
     std::chrono::system_clock::time_point start, end;
     Ciphertext<lbcrypto::DCRTPoly> pre_res;
-
+    // filtering (can be parallel)
     start = std::chrono::system_clock::now();
     comp_greater_than_modular(receiptdate_ciphers, commitdate_ciphers, precision, polyDegree, filter_res_mail, keyPair.secretKey);
 
@@ -738,7 +738,7 @@ double Eval_E2E_q6(int records_num)
     std::chrono::system_clock::time_point start, end;
     Ciphertext<lbcrypto::DCRTPoly> pre_res;
 
-    // filtering
+    // filtering (can be parallel)
     start = std::chrono::system_clock::now();
 
     comp_greater_than_modular(shipdate_ciphers, predicate_value_cipher1, precision, polyDegree, filter_res, keyPair.secretKey);
@@ -793,7 +793,9 @@ double Eval_E2E_q6(int records_num)
     }
 
     end = std::chrono::system_clock::now();
+
     aggregation_time += std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() * records_num / length;
+    printf("aggregation_time time = %f ms\n", aggregation_time);
     Plaintext agg_result, query_res_ship, query_res_mail_order, query_res_ship_order;
     cc->Decrypt(keyPair.secretKey, result, &agg_result);
 
