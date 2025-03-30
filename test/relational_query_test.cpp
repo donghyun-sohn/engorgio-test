@@ -7,7 +7,31 @@
 
 using namespace openfhe;
 using namespace lbcrypto;
-// 1, 0.5, 0
+
+/***
+ * TPC-H Query 1
+    select
+        l_returnflag,
+        l_linestatus,
+        sum(l_quantity) as sum_qty,
+        sum(l_extendedprice) as sum_base_price,
+        sum(l_extendedprice * (1 - l_discount)) as sum_disc_price,
+        sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge,
+        avg(l_quantity) as avg_qty,
+        avg(l_extendedprice) as avg_price,
+        avg(l_discount) as avg_disc,
+        count(*) as count_order
+    from
+        lineitem
+    where
+        l_shipdate <= date '1998-12-01' - interval ':1' day (3)
+    group by
+        l_returnflag,
+        l_linestatus
+    order by
+        l_returnflag,
+        l_linestatus;
+*/
 
 double Eval_E2E_q1(int records_num)
 {
@@ -265,6 +289,39 @@ double Eval_E2E_q1(int records_num)
     std::cout << std::endl;
     return filtering_time + agg_time;
 }
+
+/*
+    TPC-H Query 12
+    select
+        l_shipmode,
+        sum(case
+            when o_orderpriority = '1-URGENT'
+                or o_orderpriority = '2-HIGH'
+                then 1
+            else 0
+        end) as high_line_count,
+        sum(case
+            when o_orderpriority <> '1-URGENT'
+                and o_orderpriority <> '2-HIGH'
+                then 1
+            else 0
+        end) as low_line_count
+    from
+        orders,
+        lineitem
+    where
+        o_orderkey = l_orderkey
+        and l_shipmode in (':1', ':2')
+        and l_commitdate < l_receiptdate
+        and l_shipdate < l_commitdate
+        and l_receiptdate >= date ':3'
+        and l_receiptdate < date ':3' + interval '1' year
+    group by
+        l_shipmode
+    order by
+        l_shipmode;
+    Consider the joined table
+*/
 
 double Eval_E2E_q12(int records_num)
 {
@@ -553,6 +610,21 @@ double Eval_E2E_q12(int records_num)
     return filtering_time + agg_time;
 }
 
+/***
+ * TPC-H Query 6
+ * select
+        sum(l_extendedprice * l_discount) as revenue
+    from
+        lineitem
+    where
+        l_shipdate >= date ':1'
+        and l_shipdate < date ':1' + interval '1' year
+        and l_discount between :2 - 0.01 and :2 + 0.01
+        and l_quantity < :3;
+
+*/
+
+// 16-bit precision
 double Eval_E2E_q6(int records_num)
 {
 
@@ -666,6 +738,7 @@ double Eval_E2E_q6(int records_num)
     std::chrono::system_clock::time_point start, end;
     Ciphertext<lbcrypto::DCRTPoly> pre_res;
 
+    // filtering
     start = std::chrono::system_clock::now();
 
     comp_greater_than_modular(shipdate_ciphers, predicate_value_cipher1, precision, polyDegree, filter_res, keyPair.secretKey);
@@ -690,7 +763,6 @@ double Eval_E2E_q6(int records_num)
     int logrow = log2(length);
     std::vector<uint64_t> plain_filter_res(length);
     uint64_t plain_agg_res = 0;
-    start = std::chrono::system_clock::now();
     for (size_t i = 0; i < length; i++)
     {
         if (ship_date[i] > predicate1_value[0] && ship_date[i] < predicate2_value[0] &&
@@ -710,7 +782,8 @@ double Eval_E2E_q6(int records_num)
     printf("filter time = %f ms\n", filtering_time);
     std::cout << "Filtering finish" << std::endl;
     Ciphertext<lbcrypto::DCRTPoly> temp, rot_temp;
-
+    // aggregation
+    start = std::chrono::system_clock::now();
     for (size_t i = 0; i < logrow; i++)
     {
         int step = 1 << (logrow - i - 1);
@@ -746,95 +819,95 @@ double Eval_E2E_q6(int records_num)
 }
 
 int main(int argc, char *argv[])
-{
-    std::chrono::system_clock::time_point start, end;
-    start = std::chrono::system_clock::now();
-    std::ifstream RQ1("../../engorgio_relational_q1_2.csv", std::ios::app);
-    std::vector<std::vector<std::string>> csvData_rq1;
-    std::string line;
-    while (std::getline(RQ1, line))
-    {
-        std::vector<std::string> row;
-        std::stringstream ss(line);
-        std::string cell;
-        while (std::getline(ss, cell, ','))
-        {
-            row.push_back(cell);
-        }
-        csvData_rq1.push_back(row);
-    }
-    RQ1.close();
+{ // std::chrono::system_clock::time_point start, end;
+    // start = std::chrono::system_clock::now();
+    // std::ifstream RQ1("../../engorgio_relational_q1_2.csv", std::ios::app);
+    // std::vector<std::vector<std::string>> csvData_rq1;
+    // std::string line;
+    // while (std::getline(RQ1, line))
+    // {
+    //     std::vector<std::string> row;
+    //     std::stringstream ss(line);
+    //     std::string cell;
+    //     while (std::getline(ss, cell, ','))
+    //     {
+    //         row.push_back(cell);
+    //     }
+    //     csvData_rq1.push_back(row);
+    // }
+    // RQ1.close();
 
-    for (int i = 2048; i < 16385; i *= 2)
-    {
-        double rq1_time = Eval_E2E_q1(i);
-        for (int j = 1; j < csvData_rq1.size(); j++)
-        {
-            if (std::stoi(csvData_rq1[j][0]) == i)
-            {
-                csvData_rq1[j][3] = std::to_string(rq1_time);
-                break;
-            }
-        }
-    }
-    std::ofstream outFile_RQ1("../../engorgio_relational_q1_2.csv");
-    for (const auto &row : csvData_rq1)
-    {
-        for (int i = 0; i < row.size(); i++)
-        {
-            outFile_RQ1 << row[i];
-            if (i < row.size() - 1)
-            {
-                outFile_RQ1 << ",";
-            }
-        }
-        outFile_RQ1 << std::endl;
-    }
-    outFile_RQ1.close();
+    // for (int i = 2048; i < 16385; i *= 2)
+    // {
+    //     double rq1_time = Eval_E2E_q1(i);
+    //     for (int j = 1; j < csvData_rq1.size(); j++)
+    //     {
+    //         if (std::stoi(csvData_rq1[j][0]) == i)
+    //         {
+    //             csvData_rq1[j][3] = std::to_string(rq1_time);
+    //             break;
+    //         }
+    //     }
+    // }
+    // std::ofstream outFile_RQ1("../../engorgio_relational_q1_2.csv");
+    // for (const auto &row : csvData_rq1)
+    // {
+    //     for (int i = 0; i < row.size(); i++)
+    //     {
+    //         outFile_RQ1 << row[i];
+    //         if (i < row.size() - 1)
+    //         {
+    //             outFile_RQ1 << ",";
+    //         }
+    //     }
+    //     outFile_RQ1 << std::endl;
+    // }
+    // outFile_RQ1.close();
 
-    std::ifstream RQ12("../../engorgio_relational_q12_2.csv", std::ios::app);
-    std::vector<std::vector<std::string>> csvData_rq12;
-    while (std::getline(RQ12, line))
-    {
-        std::vector<std::string> row;
-        std::stringstream ss(line);
-        std::string cell;
-        while (std::getline(ss, cell, ','))
-        {
-            row.push_back(cell);
-        }
-        csvData_rq12.push_back(row);
-    }
-    RQ12.close();
-    for (int i = 2048; i < 16385; i *= 2)
-    {
+    // std::ifstream RQ12("../../engorgio_relational_q12_2.csv", std::ios::app);
+    // std::vector<std::vector<std::string>> csvData_rq12;
+    // while (std::getline(RQ12, line))
+    // {
+    //     std::vector<std::string> row;
+    //     std::stringstream ss(line);
+    //     std::string cell;
+    //     while (std::getline(ss, cell, ','))
+    //     {
+    //         row.push_back(cell);
+    //     }
+    //     csvData_rq12.push_back(row);
+    // }
+    // RQ12.close();
+    // for (int i = 2048; i < 16385; i *= 2)
+    // {
 
-        double rq12_time = Eval_E2E_q12(i);
-        for (int j = 1; j < csvData_rq12.size(); j++)
-        {
-            if (std::stoi(csvData_rq12[j][0]) == i)
-            {
-                csvData_rq12[j][3] = std::to_string(rq12_time);
-                break;
-            }
-        }
-    }
-    std::ofstream outFile_RQ12("../../engorgio_relational_q12_2.csv");
-    for (const auto &row : csvData_rq12)
-    {
-        for (int i = 0; i < row.size(); i++)
-        {
-            outFile_RQ12 << row[i];
-            if (i < row.size() - 1)
-            {
-                outFile_RQ12 << ",";
-            }
-        }
-        outFile_RQ12 << std::endl;
-    }
-    outFile_RQ12.close();
-    end = std::chrono::system_clock::now();
-    double total_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000;
-    std::cout << "RQ compute time:" << total_time << std::endl;
-    return 0;
+    //     double rq12_time = Eval_E2E_q12(i);
+    //     for (int j = 1; j < csvData_rq12.size(); j++)
+    //     {
+    //         if (std::stoi(csvData_rq12[j][0]) == i)
+    //         {
+    //             csvData_rq12[j][3] = std::to_string(rq12_time);
+    //             break;
+    //         }
+    //     }
+    // }
+    // std::ofstream outFile_RQ12("../../engorgio_relational_q12_2.csv");
+    // for (const auto &row : csvData_rq12)
+    // {
+    //     for (int i = 0; i < row.size(); i++)
+    //     {
+    //         outFile_RQ12 << row[i];
+    //         if (i < row.size() - 1)
+    //         {
+    //             outFile_RQ12 << ",";
+    //         }
+    //     }
+    //     outFile_RQ12 << std::endl;
+    // }
+    // outFile_RQ12.close();
+    // end = std::chrono::system_clock::now();
+    // double total_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000;
+    // std::cout << "RQ compute time:" << total_time << std::endl;
+    // return 0;
+    Eval_E2E_q6(65536);
 }
