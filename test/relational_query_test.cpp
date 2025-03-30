@@ -734,7 +734,7 @@ double Eval_E2E_q6(int records_num)
     plain_revenue = cc->MakeCKKSPackedPlaintext(revenue);
     revenue_cipher = cc->Encrypt(keyPair.publicKey, plain_revenue);
 
-    double filtering_time = 0, aggregation_time;
+    double filtering_time = 0, aggregation_time = 0;
     std::chrono::system_clock::time_point start, end;
     Ciphertext<lbcrypto::DCRTPoly> pre_res;
 
