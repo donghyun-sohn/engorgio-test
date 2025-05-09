@@ -68,3 +68,13 @@ $./bin/hybrid_query_test_2
 - codes `test/hybrid_query_test_1.cpp` and `test/hybrid_query_test_2.cpp` 
 - output binary `build/bin/hybrid_query_test_1` and `build/bin/hybrid_query_test_2`
 - This demo evaluates hybrid queries on an encrypted database with varying numbers of rows. Execute the binary files `hybrid_query_test_1` and `hybrid_query_test_2`, we will get the latencry of Engorgio in fig 6e.  Although we have reduced the number of experiments, it still takes a long time (20+ hours) to complete the experiment.
+
+## Citation
+```
+@inproceedings{engorgio,
+ author = {Song Bian and Haowen Pan and Jiaqi Hu and Zhou Zhang and Yunhao Fu and Jiafeng Hua and Yi Chen and Bo Zhang and Yier Jin and Jin Dong and Zhenyu Guan},
+ title = {Engorgio: An Arbitrary-Precision Unbounded-Size Hybrid Encrypted Database via Quantized Fully Homomorphic Encryption},
+ booktitle = {{USENIX} Security Symposium ({USENIX} Security)},
+ year = {2025}
+}
+```
