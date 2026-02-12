@@ -195,8 +195,10 @@ double Eval_E2E_q1(int records_num, bool sort_by_cnt)
     filter_res_NN = cc->EvalMult(filter_res_NN, comp_linestatus_YN);
 
     end = std::chrono::system_clock::now();
+    double filter_raw_ms = 0, agg_raw_ms = 0;
     {
         double raw_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        filter_raw_ms = raw_ms;
         filtering_time = raw_ms * records_num / length * 3;
         printf("filter time = %f ms\n", filtering_time);
         printf("  (total: %.0f ms)\n", raw_ms);
@@ -301,6 +303,7 @@ double Eval_E2E_q1(int records_num, bool sort_by_cnt)
     end = std::chrono::system_clock::now();
 
     double ta = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000;
+    agg_raw_ms = ta;
     double agg_time = ta * records_num / length;
     printf("Agg time = %f ms\n", agg_time);
     printf("  (total: %.2f ms)\n", ta);
@@ -321,7 +324,8 @@ double Eval_E2E_q1(int records_num, bool sort_by_cnt)
     std::vector<std::complex<double>> agg_resultNY = plaintextDec_agg_resultNY->GetCKKSPackedValue();
     std::vector<std::complex<double>> agg_resultNN = plaintextDec_agg_resultNN->GetCKKSPackedValue();
 
-    std::cout << "Query Evaluation Time: " << filtering_time + agg_time << " ms" << std::endl;
+    std::cout << "Query Evaluation Time: " << filtering_time + agg_time << " ms (amortized)" << std::endl;
+    std::cout << "Query Evaluation Time (actual): " << filter_raw_ms + agg_raw_ms << " ms" << std::endl;
     std::cout << "--------------------------------------------------------" << std::endl;
 
     if (sort_by_cnt)
@@ -467,13 +471,14 @@ double Eval_E2E_q1_light(int records_num)
     qty_ciphers = cc->Encrypt(keyPair.publicKey, plain_qty);
 
     Ciphertext<lbcrypto::DCRTPoly> filter_res;
-    double filtering_time = 0, aggregation_time = 0;
+    double filtering_time = 0, aggregation_time = 0, filter_raw_ms = 0, agg_raw_ms = 0;
     std::chrono::system_clock::time_point start, end;
     start = std::chrono::system_clock::now();
     comp_greater_than_modular(ship_predict_ciphers, ship_data_ciphers, precision, polyDegree, filter_res, keyPair.secretKey);
     end = std::chrono::system_clock::now();
     {
         double raw_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        filter_raw_ms = raw_ms;
         filtering_time = raw_ms * records_num / length;
         printf("filter time = %f ms\n", filtering_time);
         printf("  (total: %.0f ms)\n", raw_ms);
@@ -496,6 +501,7 @@ double Eval_E2E_q1_light(int records_num)
     }
     end = std::chrono::system_clock::now();
     double ta = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000;
+    agg_raw_ms = ta;
     aggregation_time = ta * records_num / length;
     printf("Agg time = %f ms\n", aggregation_time);
     printf("  (total: %.2f ms)\n", ta);
@@ -504,7 +510,8 @@ double Eval_E2E_q1_light(int records_num)
     cc->Decrypt(keyPair.secretKey, sum_qty_cipher, &plaintextDec);
     plaintextDec->SetLength(encodedLength);
     auto res_dec = plaintextDec->GetCKKSPackedValue();
-    std::cout << "Query Evaluation Time: " << filtering_time + aggregation_time << " ms" << std::endl;
+    std::cout << "Query Evaluation Time: " << filtering_time + aggregation_time << " ms (amortized)" << std::endl;
+    std::cout << "Query Evaluation Time (actual): " << filter_raw_ms + agg_raw_ms << " ms" << std::endl;
     std::cout << "Encrypted SUM(quantity): " << std::round(res_dec[0].real()) << std::endl;
     std::cout << "Plain SUM(quantity):     " << plain_agg << std::endl;
     std::cout << std::endl;
@@ -663,7 +670,7 @@ double Eval_E2E_q12(int records_num)
     plain_predicate_high = cc->MakeCKKSPackedPlaintext(predicate_high);
     predicate_high_cipher = cc->Encrypt(keyPair.publicKey, plain_predicate_high);
 
-    double filtering_time = 0;
+    double filtering_time = 0, filter_raw_ms = 0, agg_raw_ms = 0;
     std::chrono::system_clock::time_point start, end;
     Ciphertext<lbcrypto::DCRTPoly> pre_res;
     // filtering (can be parallel)
@@ -747,6 +754,7 @@ double Eval_E2E_q12(int records_num)
 
     {
         double raw_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        filter_raw_ms = raw_ms;
         filtering_time = raw_ms * records_num / length;
         printf("filter time = %f ms\n", filtering_time);
         printf("  (total: %.0f ms)\n", raw_ms);
@@ -817,7 +825,8 @@ double Eval_E2E_q12(int records_num)
     std::vector<std::complex<double>> res_mail_order_dec = query_res_mail_order->GetCKKSPackedValue();
     std::vector<std::complex<double>> res_ship_order_dec = query_res_ship_order->GetCKKSPackedValue();
 
-    std::cout << "Query Evaluation Time: " << filtering_time + agg_time << " ms" << std::endl;
+    std::cout << "Query Evaluation Time: " << filtering_time + agg_time << " ms (amortized)" << std::endl;
+    std::cout << "Query Evaluation Time (actual): " << filter_raw_ms << " ms" << std::endl;
     std::cout << "Encrypted result: " << std::endl;
     std::cout << std::setw(12) << "shipmode" << "|" << std::setw(16) << "high_line_count" << "|" << std::setw(16) << "low_line_count" << std::endl;
     std::cout << std::setw(12) << "MAIL" << "|" << std::setw(16) << res_mail_order_dec[0].real() << "|" << std::setw(16) << res_mail_dec[0].real() - res_mail_order_dec[0].real() << std::endl;
@@ -961,7 +970,7 @@ double Eval_E2E_q6(int records_num)
     plain_revenue = cc->MakeCKKSPackedPlaintext(revenue);
     revenue_cipher = cc->Encrypt(keyPair.publicKey, plain_revenue);
 
-    double filtering_time = 0, aggregation_time = 0;
+    double filtering_time = 0, aggregation_time = 0, filter_raw_ms = 0, agg_raw_ms = 0;
     std::chrono::system_clock::time_point start, end;
     Ciphertext<lbcrypto::DCRTPoly> pre_res;
 
@@ -1007,6 +1016,7 @@ double Eval_E2E_q6(int records_num)
 
     {
         double raw_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        filter_raw_ms = raw_ms;
         filtering_time = raw_ms * records_num / length;
         printf("filter time = %f ms\n", filtering_time);
         printf("  (total: %.0f ms)\n", raw_ms);
@@ -1027,6 +1037,7 @@ double Eval_E2E_q6(int records_num)
 
     {
         double raw_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        agg_raw_ms = raw_ms;
         aggregation_time += raw_ms * records_num / length;
         printf("aggregation_time time = %f ms\n", aggregation_time);
         printf("  (total: %.0f ms)\n", raw_ms);
@@ -1038,7 +1049,8 @@ double Eval_E2E_q6(int records_num)
 
     std::vector<std::complex<double>> res_dec = agg_result->GetCKKSPackedValue();
 
-    std::cout << "Query Evaluation Time: " << filtering_time + aggregation_time << " ms" << std::endl;
+    std::cout << "Query Evaluation Time: " << filtering_time + aggregation_time << " ms (amortized)" << std::endl;
+    std::cout << "Query Evaluation Time (actual): " << filter_raw_ms + agg_raw_ms << " ms" << std::endl;
 
     std::cout << "Encrypted query result: " << std::endl;
     std::cout << std::setw(12) << "revenue" << std::endl;
