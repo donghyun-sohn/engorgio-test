@@ -69,6 +69,19 @@ $./bin/hybrid_query_test_2
 - output binary `build/bin/hybrid_query_test_1` and `build/bin/hybrid_query_test_2`
 - This demo evaluates hybrid queries on an encrypted database with varying numbers of rows. Execute the binary files `hybrid_query_test_1` and `hybrid_query_test_2`, we will get the latencry of Engorgio in fig 6e.  Although we have reduced the number of experiments, it still takes a long time (20+ hours) to complete the experiment.
 
+## Acknowledgment
+
+This project is based on the Engorgio codebase:
+https://github.com/Errantry73/Engorgio
+
+Original license: BSD-2-Clause
+
+### Modifications
+- Refactored filtering operators
+- Integrated with VaultDB-style columnar execution
+- Added OpenFHE-based CKKS experiments
+- Simplified build & run scripts for lab usage
+
 ## Citation
 ```
 @inproceedings{engorgio,

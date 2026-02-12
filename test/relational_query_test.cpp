@@ -1,8 +1,10 @@
 #include "ENGORGIO/comp.h"
 #include "ENGORGIO/sort.h"
 #include "ENGORGIO/utils.h"
+#include <algorithm>
 #include <chrono>
 #include <omp.h>
+#include <string>
 #include "math/chebyshev.h"
 
 using namespace openfhe;
@@ -33,12 +35,14 @@ using namespace lbcrypto;
         l_linestatus;
 */
 
-double Eval_E2E_q1(int records_num)
+double Eval_E2E_q1(int records_num, bool sort_by_cnt)
 {
 
     std::cout << "Relational SQL Query1 Test: " << std::endl;
     std::cout << "--------------------------------------------------------" << std::endl;
     std::cout << "Records: " << records_num << std::endl;
+    if (sort_by_cnt)
+        std::cout << "Sort by count: ON" << std::endl;
     CCParams<CryptoContextCKKSRNS> parameters;
 
     parameters.SetSecurityLevel(HEStd_128_classic);
@@ -56,8 +60,15 @@ double Eval_E2E_q1(int records_num)
     std::uint32_t polyDegree = 119;
 
     std::uint32_t multDepth = 27;
+    if (sort_by_cnt)
+    {
+        std::vector<std::uint32_t> levelBudget = {4, 4};
+        multDepth = 25 + FHECKKSRNS::GetBootstrapDepth(levelBudget, secretKeyDist);
+    }
     parameters.SetMultiplicativeDepth(multDepth);
     CryptoContext<DCRTPoly> cc = GenCryptoContext(parameters);
+    std::cout << "ringDim = " << cc->GetRingDimension()
+          << ", slots = " << cc->GetRingDimension()/2 << std::endl;
     cc->Enable(PKE);
     cc->Enable(KEYSWITCH);
     cc->Enable(LEVELEDSHE);
@@ -88,8 +99,20 @@ double Eval_E2E_q1(int records_num)
         rotstep.push_back(i);
         rotstep.push_back(-i);
     }
+    if (sort_by_cnt)
+    {
+        rotstep.push_back(3);
+        rotstep.push_back(-3);
+    }
 
     cc->EvalRotateKeyGen(keyPair.secretKey, rotstep);
+
+    if (sort_by_cnt)
+    {
+        cc->Enable(FHE);
+        cc->EvalBootstrapSetup({4, 4});
+        cc->EvalBootstrapKeyGen(keyPair.secretKey, length);
+    }
 
     std::vector<double> ship_date_data(length), ship_date_predict(length, 10592), returnflag(length), linestatus(length), returnflag_predicate_Y(length, 100),
         returnflag_predicate_N(length, 0), linestatus_predicate_Y(length, 100), linestatus_predicate_N(length, 0),
@@ -172,11 +195,16 @@ double Eval_E2E_q1(int records_num)
     filter_res_NN = cc->EvalMult(filter_res_NN, comp_linestatus_YN);
 
     end = std::chrono::system_clock::now();
-    filtering_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() * records_num / length * 3;
-    printf("filter time = %f ms\n", filtering_time);
+    {
+        double raw_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        filtering_time = raw_ms * records_num / length * 3;
+        printf("filter time = %f ms\n", filtering_time);
+        printf("  (total: %.0f ms)\n", raw_ms);
+    }
 
     std::vector<uint64_t> plain_filter_res_YY(length, 0), plain_filter_res_YN(length, 0), plain_filter_res_NY(length, 0), plain_filter_res_NN(length, 0);
     uint64_t plain_agg_res_YY = 0, plain_agg_res_YN = 0, plain_agg_res_NY = 0, plain_agg_res_NN = 0;
+    uint64_t plain_cnt_YY = 0, plain_cnt_YN = 0, plain_cnt_NY = 0, plain_cnt_NN = 0;
 
     for (size_t i = 0; i < length; i++)
     {
@@ -188,11 +216,13 @@ double Eval_E2E_q1(int records_num)
                 {
                     plain_filter_res_YY[i] = 1;
                     plain_agg_res_YY += quantity[i];
+                    plain_cnt_YY++;
                 }
                 else
                 {
                     plain_filter_res_YN[i] = 1;
                     plain_agg_res_YN += quantity[i];
+                    plain_cnt_YN++;
                 }
             }
             else
@@ -201,11 +231,13 @@ double Eval_E2E_q1(int records_num)
                 {
                     plain_filter_res_NY[i] = 1;
                     plain_agg_res_NY += quantity[i];
+                    plain_cnt_NY++;
                 }
                 else
                 {
                     plain_filter_res_NN[i] = 1;
                     plain_agg_res_NN += quantity[i];
+                    plain_cnt_NN++;
                 }
             }
         }
@@ -244,11 +276,34 @@ double Eval_E2E_q1(int records_num)
         rot_temp = cc->EvalRotate(temp, step);
         sum_qty_cipher_NN = cc->EvalAdd(sum_qty_cipher_NN, rot_temp);
     }
+    /* count(*) per group: rotate-sum of filter masks (no mult by qty) */
+    Ciphertext<lbcrypto::DCRTPoly> count_cipher_YY = filter_res_YY, count_cipher_YN = filter_res_YN,
+                                   count_cipher_NY = filter_res_NY, count_cipher_NN = filter_res_NN;
+    for (size_t i = 0; i < logrow; i++)
+    {
+        int step = 1 << (logrow - i - 1);
+        temp = count_cipher_YY;
+        rot_temp = cc->EvalRotate(temp, step);
+        count_cipher_YY = cc->EvalAdd(count_cipher_YY, rot_temp);
+
+        temp = count_cipher_YN;
+        rot_temp = cc->EvalRotate(temp, step);
+        count_cipher_YN = cc->EvalAdd(count_cipher_YN, rot_temp);
+
+        temp = count_cipher_NY;
+        rot_temp = cc->EvalRotate(temp, step);
+        count_cipher_NY = cc->EvalAdd(count_cipher_NY, rot_temp);
+
+        temp = count_cipher_NN;
+        rot_temp = cc->EvalRotate(temp, step);
+        count_cipher_NN = cc->EvalAdd(count_cipher_NN, rot_temp);
+    }
     end = std::chrono::system_clock::now();
 
     double ta = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000;
     double agg_time = ta * records_num / length;
-    printf("Agg time = %f ms\n", ta * records_num / length);
+    printf("Agg time = %f ms\n", agg_time);
+    printf("  (total: %.2f ms)\n", ta);
 
     Plaintext plaintextDec_agg_resultYY, plaintextDec_agg_resultYN, plaintextDec_agg_resultNY, plaintextDec_agg_resultNN;
     cc->Decrypt(keyPair.secretKey, sum_qty_cipher_YY, &plaintextDec_agg_resultYY);
@@ -269,6 +324,55 @@ double Eval_E2E_q1(int records_num)
     std::cout << "Query Evaluation Time: " << filtering_time + agg_time << " ms" << std::endl;
     std::cout << "--------------------------------------------------------" << std::endl;
 
+    if (sort_by_cnt)
+    {
+        std::cout << "Filter -> count -> Engorgio HomSort (bitonic) by count..." << std::endl;
+        /* Replicate 4 counts into 4 blocks of length/4 slots so bitonic_sort_query can sort. */
+        const int block_sz = length / 4;
+        std::vector<double> mask0(length, 0), mask1(length, 0), mask2(length, 0), mask3(length, 0);
+        for (int i = 0; i < block_sz; i++)
+            mask0[i] = 1;
+        for (int i = block_sz; i < 2 * block_sz; i++)
+            mask1[i] = 1;
+        for (int i = 2 * block_sz; i < 3 * block_sz; i++)
+            mask2[i] = 1;
+        for (int i = 3 * block_sz; i < length; i++)
+            mask3[i] = 1;
+        Plaintext plain_m0 = cc->MakeCKKSPackedPlaintext(mask0);
+        Plaintext plain_m1 = cc->MakeCKKSPackedPlaintext(mask1);
+        Plaintext plain_m2 = cc->MakeCKKSPackedPlaintext(mask2);
+        Plaintext plain_m3 = cc->MakeCKKSPackedPlaintext(mask3);
+        Ciphertext<DCRTPoly> packed = cc->EvalMult(count_cipher_YY, plain_m0);
+        packed = cc->EvalAdd(packed, cc->EvalMult(count_cipher_YN, plain_m1));
+        packed = cc->EvalAdd(packed, cc->EvalMult(count_cipher_NY, plain_m2));
+        packed = cc->EvalAdd(packed, cc->EvalMult(count_cipher_NN, plain_m3));
+
+        std::vector<Ciphertext<DCRTPoly>> sync_matrix;
+        double sort_precision = std::max(precision, 8.0 * length);
+        double sort_time = bitonic_sort_query(8, length, length, sort_precision, multDepth, packed, keyPair.secretKey, sync_matrix);
+        std::cout << "Sort time: " << sort_time << " ms" << std::endl;
+
+        Plaintext plain_sorted;
+        cc->Decrypt(keyPair.secretKey, packed, &plain_sorted);
+        plain_sorted->SetLength(encodedLength);
+        std::vector<std::complex<double>> sorted = plain_sorted->GetCKKSPackedValue();
+        uint64_t s0 = static_cast<uint64_t>(std::round(sorted[0].real()));
+        uint64_t s1 = static_cast<uint64_t>(std::round(sorted[block_sz].real()));
+        uint64_t s2 = static_cast<uint64_t>(std::round(sorted[2 * block_sz].real()));
+        uint64_t s3 = static_cast<uint64_t>(std::round(sorted[3 * block_sz].real()));
+
+        std::cout << "Encrypted query result (sorted by count, HomSort): " << std::endl;
+        std::cout << std::setw(16) << "count (slot 0, block_sz, 2*block_sz, 3*block_sz)" << std::endl;
+        std::cout << std::setw(16) << s0 << std::endl << std::setw(16) << s1 << std::endl << std::setw(16) << s2 << std::endl << std::setw(16) << s3 << std::endl;
+        std::vector<uint64_t> plain_vals = {plain_cnt_YY, plain_cnt_YN, plain_cnt_NY, plain_cnt_NN};
+        std::sort(plain_vals.begin(), plain_vals.end());
+        std::cout << "Plain query result (sorted by count): " << std::endl;
+        for (int i = 0; i < 4; i++)
+            std::cout << std::setw(16) << plain_vals[i] << std::endl;
+        std::cout << std::endl;
+        return filtering_time + agg_time + sort_time;
+    }
+
     std::cout << "Encrypted query result: " << std::endl;
     std::cout << std::setw(16) << "returnfalg" << "|" << std::setw(16) << "linestatus" << "|" << std::setw(16) << "sum_qty" << std::endl;
     std::cout << std::setw(16) << "Y" << "|" << std::setw(16) << "Y" << "|" << std::setw(16) << std::round(agg_resultYY[0].real()) << std::endl;
@@ -288,6 +392,123 @@ double Eval_E2E_q1(int records_num)
     std::cout << std::endl;
     std::cout << std::endl;
     return filtering_time + agg_time;
+}
+
+/**
+ * Q1-light: fewer filters. Only WHERE shipdate <= 10592, no GROUP BY.
+ *   SELECT SUM(l_quantity) FROM lineitem WHERE l_shipdate <= date '1998-12-01';
+ * Single filter (shipdate), single aggregate.
+ */
+double Eval_E2E_q1_light(int records_num)
+{
+    CCParams<CryptoContextCKKSRNS> parameters;
+    parameters.SetSecurityLevel(HEStd_128_classic);
+#if NATIVEINT == 128
+    usint scalingModSize = 78;
+    usint firstModSize = 89;
+#else
+    usint scalingModSize = 50;
+    usint firstModSize = 60;
+#endif
+    SecretKeyDist secretKeyDist = SPARSE_TERNARY;
+    parameters.SetSecretKeyDist(secretKeyDist);
+    parameters.SetScalingModSize(scalingModSize);
+    parameters.SetFirstModSize(firstModSize);
+    std::uint32_t polyDegree = 119;
+    std::uint32_t multDepth = 27;
+    parameters.SetMultiplicativeDepth(multDepth);
+
+    CryptoContext<DCRTPoly> cc = GenCryptoContext(parameters);
+    std::cout << "ringDim = " << cc->GetRingDimension()
+          << ", slots = " << cc->GetRingDimension()/2 << std::endl;
+
+    std::cout << "Q1-light (filter: shipdate only) Test: " << std::endl;
+    std::cout << "--------------------------------------------------------" << std::endl;
+    std::cout << "Records: " << records_num << std::endl;
+    cc->Enable(PKE);
+    cc->Enable(KEYSWITCH);
+    cc->Enable(LEVELEDSHE);
+    cc->Enable(ADVANCEDSHE);
+    std::uniform_int_distribution<std::uint32_t> shipdate_message(0, 10592 + 100);
+    std::uniform_int_distribution<uint64_t> quantity_message(0, 8);
+    double precision = (1 << (8 - 1)) - 1;
+    double lowerBound = -precision;
+    double upperBound = precision;
+    auto keyPair = cc->KeyGen();
+    usint ringDim = cc->GetRingDimension();
+    int length = ringDim / 2;
+    int Bg = 7;
+    cc->EvalMultKeyGen(keyPair.secretKey);
+    std::random_device seed_gen;
+    std::default_random_engine engine(seed_gen());
+    std::uniform_int_distribution<int> message(0, precision);
+    std::vector<int> rotstep;
+    for (int i = 1; i < length; i *= 2) { rotstep.push_back(i); rotstep.push_back(-i); }
+    cc->EvalRotateKeyGen(keyPair.secretKey, rotstep);
+
+    std::vector<double> ship_date_data(length), ship_date_predict(length, 10592), quantity(length);
+    std::vector<Ciphertext<lbcrypto::DCRTPoly>> ship_data_ciphers, ship_predict_ciphers;
+    Ciphertext<lbcrypto::DCRTPoly> qty_ciphers;
+    for (int i = 0; i < length; i++) {
+        ship_date_data[i] = double(shipdate_message(engine));
+        quantity[i] = quantity_message(engine);
+    }
+    auto ship_date_data_quant = quantization(ship_date_data, 16, Bg);
+    auto ship_date_predict_quant = quantization(ship_date_predict, 16, Bg);
+    int block = ship_date_data_quant.size();
+    size_t encodedLength = ship_date_data.size();
+    for (int i = 0; i < block; i++) {
+        Plaintext plain_a = cc->MakeCKKSPackedPlaintext(ship_date_data_quant[i]);
+        Plaintext plain_b = cc->MakeCKKSPackedPlaintext(ship_date_predict_quant[i]);
+        ship_data_ciphers.push_back(cc->Encrypt(keyPair.publicKey, plain_a));
+        ship_predict_ciphers.push_back(cc->Encrypt(keyPair.publicKey, plain_b));
+    }
+    Plaintext plain_qty = cc->MakeCKKSPackedPlaintext(quantity);
+    qty_ciphers = cc->Encrypt(keyPair.publicKey, plain_qty);
+
+    Ciphertext<lbcrypto::DCRTPoly> filter_res;
+    double filtering_time = 0, aggregation_time = 0;
+    std::chrono::system_clock::time_point start, end;
+    start = std::chrono::system_clock::now();
+    comp_greater_than_modular(ship_predict_ciphers, ship_data_ciphers, precision, polyDegree, filter_res, keyPair.secretKey);
+    end = std::chrono::system_clock::now();
+    {
+        double raw_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        filtering_time = raw_ms * records_num / length;
+        printf("filter time = %f ms\n", filtering_time);
+        printf("  (total: %.0f ms)\n", raw_ms);
+    }
+
+    uint64_t plain_agg = 0;
+    for (size_t i = 0; i < length; i++)
+        if (ship_date_data[i] < 10592) plain_agg += quantity[i];
+    std::cout << "Filtering finish" << std::endl;
+
+    Ciphertext<lbcrypto::DCRTPoly> sum_qty_cipher = cc->EvalMult(qty_ciphers, filter_res);
+    start = std::chrono::system_clock::now();
+    int logrow = log2(length);
+    Ciphertext<lbcrypto::DCRTPoly> temp, rot_temp;
+    for (size_t i = 0; i < logrow; i++) {
+        int step = 1 << (logrow - i - 1);
+        temp = sum_qty_cipher;
+        rot_temp = cc->EvalRotate(temp, step);
+        sum_qty_cipher = cc->EvalAdd(sum_qty_cipher, rot_temp);
+    }
+    end = std::chrono::system_clock::now();
+    double ta = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000;
+    aggregation_time = ta * records_num / length;
+    printf("Agg time = %f ms\n", aggregation_time);
+    printf("  (total: %.2f ms)\n", ta);
+
+    Plaintext plaintextDec;
+    cc->Decrypt(keyPair.secretKey, sum_qty_cipher, &plaintextDec);
+    plaintextDec->SetLength(encodedLength);
+    auto res_dec = plaintextDec->GetCKKSPackedValue();
+    std::cout << "Query Evaluation Time: " << filtering_time + aggregation_time << " ms" << std::endl;
+    std::cout << "Encrypted SUM(quantity): " << std::round(res_dec[0].real()) << std::endl;
+    std::cout << "Plain SUM(quantity):     " << plain_agg << std::endl;
+    std::cout << std::endl;
+    return filtering_time + aggregation_time;
 }
 
 /*
@@ -524,8 +745,12 @@ double Eval_E2E_q12(int records_num)
 
     end = std::chrono::system_clock::now();
 
-    filtering_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() * records_num / length;
-    printf("filter time = %f ms\n", filtering_time);
+    {
+        double raw_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        filtering_time = raw_ms * records_num / length;
+        printf("filter time = %f ms\n", filtering_time);
+        printf("  (total: %.0f ms)\n", raw_ms);
+    }
     std::cout << "Filtering finish" << std::endl;
     std::vector<uint64_t> plain_filter_res_mail(length, 0), plain_filter_res_ship(length, 0), plain_filter_order(length, 0);
     std::vector<uint64_t> plain_res_mail_order(length, 0), plain_res_ship_order(length, 0);
@@ -574,6 +799,7 @@ double Eval_E2E_q12(int records_num)
     double ta = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000;
     double agg_time = ta * records_num / length;
     printf("Agg time = %f ms\n", agg_time);
+    printf("  (total: %.2f ms)\n", ta);
 
     Plaintext query_res_mail, query_res_ship, query_res_mail_order, query_res_ship_order;
     cc->Decrypt(keyPair.secretKey, agg_mail, &query_res_mail);
@@ -627,12 +853,7 @@ double Eval_E2E_q12(int records_num)
 // 16-bit precision
 double Eval_E2E_q6(int records_num)
 {
-
-    std::cout << "Relational SQL Query6 Test: " << std::endl;
-    std::cout << "--------------------------------------------------------" << std::endl;
-    std::cout << "Records: " << records_num << std::endl;
     CCParams<CryptoContextCKKSRNS> parameters;
-
     parameters.SetSecurityLevel(HEStd_128_classic);
 #if NATIVEINT == 128
     usint scalingModSize = 78;
@@ -646,10 +867,16 @@ double Eval_E2E_q6(int records_num)
     parameters.SetScalingModSize(scalingModSize);
     parameters.SetFirstModSize(firstModSize);
     std::uint32_t polyDegree = 119;
-
     std::uint32_t multDepth = 30;
     parameters.SetMultiplicativeDepth(multDepth);
+
     CryptoContext<DCRTPoly> cc = GenCryptoContext(parameters);
+    std::cout << "ringDim = " << cc->GetRingDimension()
+          << ", slots = " << cc->GetRingDimension()/2 << std::endl;
+
+    std::cout << "Relational SQL Query6 Test: " << std::endl;
+    std::cout << "--------------------------------------------------------" << std::endl;
+    std::cout << "Records: " << records_num << std::endl;
     cc->Enable(PKE);
     cc->Enable(KEYSWITCH);
     cc->Enable(LEVELEDSHE);
@@ -778,8 +1005,12 @@ double Eval_E2E_q6(int records_num)
     }
     end = std::chrono::system_clock::now();
 
-    filtering_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() * records_num / length;
-    printf("filter time = %f ms\n", filtering_time);
+    {
+        double raw_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        filtering_time = raw_ms * records_num / length;
+        printf("filter time = %f ms\n", filtering_time);
+        printf("  (total: %.0f ms)\n", raw_ms);
+    }
     std::cout << "Filtering finish" << std::endl;
     Ciphertext<lbcrypto::DCRTPoly> temp, rot_temp;
     // aggregation
@@ -794,8 +1025,12 @@ double Eval_E2E_q6(int records_num)
 
     end = std::chrono::system_clock::now();
 
-    aggregation_time += std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() * records_num / length;
-    printf("aggregation_time time = %f ms\n", aggregation_time);
+    {
+        double raw_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+        aggregation_time += raw_ms * records_num / length;
+        printf("aggregation_time time = %f ms\n", aggregation_time);
+        printf("  (total: %.0f ms)\n", raw_ms);
+    }
     Plaintext agg_result, query_res_ship, query_res_mail_order, query_res_ship_order;
     cc->Decrypt(keyPair.secretKey, result, &agg_result);
 
@@ -820,8 +1055,180 @@ double Eval_E2E_q6(int records_num)
     return filtering_time + aggregation_time;
 }
 
+/**
+ * TPC-H Q6-style filter + sort + sync test.
+ * Uses same TPC-H schema/data as Eval_E2E_q6 (shipdate, discount, quantity, revenue),
+ * runs filter+agg, then sort and sync benchmarks for the same row counts.
+ * Invoke with: ./relational_query_test --filter-sort
+ */
+void Eval_TPCH_Q6_filter_sort()
+{
+    std::cout << "--------------------- TPC-H Q6 Filter + Sort + Sync --------------------- " << std::endl;
+    auto sort_time_table = openfhe::bitonic_sort_modular_query(8, 2, 4096);
+    for (int num = 64; num < 4097; num *= 4)
+    {
+        std::cout << "--------------- TPC-H Q6 filter+sort with " << num << " records ---------------" << std::endl;
+        std::cout << "Eval TPC-H Q6 (filter + agg)..." << std::endl;
+        double filter_agg_time = Eval_E2E_q6(num);
+        std::cout << num << " filter+agg time: " << filter_agg_time << " ms" << std::endl;
+
+        std::cout << "Eval sort..." << std::endl;
+        double sort_time = sort_time_table[std::log2(num) - 1];
+        std::cout << num << " sort time: " << sort_time << " ms" << std::endl;
+
+        std::cout << "Eval sync..." << std::endl;
+        double sync_time = openfhe::sync_test_small(8, num);
+        std::cout << num << " sync time: " << sync_time << " ms" << std::endl;
+
+        double total_time = filter_agg_time + sort_time + sync_time;
+        std::cout << num << " TPC-H Q6 filter+sort+sync total: " << total_time << " ms" << std::endl
+                  << std::endl;
+    }
+}
+
+/**
+ * TPC-H Q1 + sort by count(*).
+ * Runs Q1 (filter + group-by + agg), computes count(*) per group, replicates 4 counts
+ * into 4 blocks, runs Engorgio bitonic_sort_query (HomSort) on full ciphertext,
+ * decrypts and prints sorted result vs plain.
+ * Invoke with: ./relational_query_test --filter-sort-q1 [records]
+ *   records = input row count for scaling (default 1024).
+ */
+void Eval_TPCH_Q1_filter_sort(int records_num)
+{
+    std::cout << "--------------------- TPC-H Q1 + Sort by count --------------------- " << std::endl;
+    double total_time = Eval_E2E_q1(records_num, true);
+    std::cout << "--------------------------------------------------------" << std::endl;
+    std::cout << "TPC-H Q1 + sort-by-count total: " << total_time << " ms" << std::endl;
+}
+
+static void usage(const char* prog)
+{
+    std::cerr << "Usage:\n"
+              << "  " << prog << "                     Run Q6 with 65536 rows (default).\n"
+              << "  " << prog << " --q1 [N]             Run Q1 (filter+group+agg); N rows (default 1024).\n"
+              << "  " << prog << " --q6 [N]             Run Q6 (filter+agg); N rows (default 65536).\n"
+              << "  " << prog << " --q12 [N]            Run Q12 (filter+agg); N rows (default 1024).\n"
+              << "  " << prog << " --records N          Run Q6 with N rows (alias for --q6).\n"
+              << "  " << prog << " --filter-sort        Run Q6 filter+sort (64,256,1024,4096 rows).\n"
+              << "  " << prog << " --filter-sort-q1 [N] Run Q1+sort by count; N rows (default 1024).\n"
+              << "  " << prog << " --q1-light [N]       Run Q1-light (shipdate filter only); N rows (default 1024).\n";
+}
+
 int main(int argc, char *argv[])
-{ // std::chrono::system_clock::time_point start, end;
+{
+    if (argc >= 2)
+    {
+        std::string arg(argv[1]);
+        if (arg == "--help" || arg == "-h")
+        {
+            usage(argv[0]);
+            return 0;
+        }
+        if (arg == "--filter-sort")
+        {
+            std::chrono::system_clock::time_point start, end;
+            start = std::chrono::system_clock::now();
+            Eval_TPCH_Q6_filter_sort();
+            end = std::chrono::system_clock::now();
+            double total = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+            std::cout << "TPC-H Q6 filter+sort test total compute time: " << total << " ms" << std::endl;
+            return 0;
+        }
+        if (arg == "--filter-sort-q1")
+        {
+            int records = 1024;
+            if (argc >= 3)
+            {
+                try { records = std::stoi(argv[2]); }
+                catch (...)
+                {
+                    std::cerr << "Invalid --filter-sort-q1 records: " << argv[2] << std::endl;
+                    return 1;
+                }
+            }
+            std::chrono::system_clock::time_point start, end;
+            start = std::chrono::system_clock::now();
+            Eval_TPCH_Q1_filter_sort(records);
+            end = std::chrono::system_clock::now();
+            double total = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+            std::cout << "TPC-H Q1 filter+sort test total compute time: " << total << " ms" << std::endl;
+            return 0;
+        }
+        if (arg == "--q1")
+        {
+            int records = 1024;
+            if (argc >= 3)
+            {
+                try { records = std::stoi(argv[2]); }
+                catch (...) { records = 1024; }
+            }
+            std::chrono::system_clock::time_point start, end;
+            start = std::chrono::system_clock::now();
+            Eval_E2E_q1(records, false);
+            end = std::chrono::system_clock::now();
+            double total = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+            std::cout << "Q1 total compute time: " << total << " ms" << std::endl;
+            return 0;
+        }
+        if (arg == "--q6" || arg == "--records")
+        {
+            int records = 65536;
+            if (argc >= 3)
+            {
+                try { records = std::stoi(argv[2]); }
+                catch (...) { records = 65536; }
+            }
+            std::chrono::system_clock::time_point start, end;
+            start = std::chrono::system_clock::now();
+            Eval_E2E_q6(records);
+            end = std::chrono::system_clock::now();
+            double total = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+            std::cout << "Q6 total compute time: " << total << " ms" << std::endl;
+            return 0;
+        }
+        if (arg == "--q12")
+        {
+            int records = 1024;
+            if (argc >= 3)
+            {
+                try { records = std::stoi(argv[2]); }
+                catch (...) { records = 1024; }
+            }
+            std::chrono::system_clock::time_point start, end;
+            start = std::chrono::system_clock::now();
+            Eval_E2E_q12(records);
+            end = std::chrono::system_clock::now();
+            double total = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+            std::cout << "Q12 total compute time: " << total << " ms" << std::endl;
+            return 0;
+        }
+        if (arg == "--q1-light")
+        {
+            int records = 1024;
+            if (argc >= 3)
+            {
+                try { records = std::stoi(argv[2]); }
+                catch (...)
+                {
+                    std::cerr << "Invalid --q1-light records: " << argv[2] << std::endl;
+                    return 1;
+                }
+            }
+            std::chrono::system_clock::time_point start, end;
+            start = std::chrono::system_clock::now();
+            Eval_E2E_q1_light(records);
+            end = std::chrono::system_clock::now();
+            double total = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+            std::cout << "Q1-light total compute time: " << total << " ms" << std::endl;
+            return 0;
+        }
+        std::cerr << "Unknown option: " << arg << std::endl;
+        usage(argv[0]);
+        return 1;
+    }
+
+    // Default: Q6 with 65536 rows
     // start = std::chrono::system_clock::now();
     // std::ifstream RQ1("../../engorgio_relational_q1_2.csv", std::ios::app);
     // std::vector<std::vector<std::string>> csvData_rq1;
@@ -841,7 +1248,7 @@ int main(int argc, char *argv[])
 
     // for (int i = 2048; i < 16385; i *= 2)
     // {
-    //     double rq1_time = Eval_E2E_q1(i);
+    //     double rq1_time = Eval_E2E_q1(i, false);
     //     for (int j = 1; j < csvData_rq1.size(); j++)
     //     {
     //         if (std::stoi(csvData_rq1[j][0]) == i)

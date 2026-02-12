@@ -9,6 +9,7 @@ cmake_install.cmake
 *.out
 *.a
 *.so
+*.log
  
 *.swp
 *.swo

@@ -2145,7 +2145,8 @@ namespace openfhe
         cc->ClearEvalMultKeys();
         cc->ClearEvalAutomorphismKeys();
         CryptoContextFactory<DCRTPoly>::ReleaseAllContexts();
-        std::cout << " sync time: " << time_total * num_slots / length << "ms" << std::endl
+        std::cout << " sync time (amortized): " << time_total * num_slots / length << " ms" << std::endl;
+        std::cout << " sync time (total):     " << time_total << " ms" << std::endl
                   << std::endl;
         return time_total * num_slots / length;
     }
