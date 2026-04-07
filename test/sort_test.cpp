@@ -8,14 +8,6 @@ using namespace lbcrypto;
 
 int main(int argc, char *argv[])
 {
-    int num_slots = 32768;  // default
-    if (argc >= 2)
-    {
-        try { num_slots = std::stoi(argv[1]); }
-        catch (...) { num_slots = 32768; }
-    }
-    std::cout << "Sorting " << num_slots << " records" << std::endl;
-
     std::chrono::system_clock::time_point start, end;
     start = std::chrono::system_clock::now();
     std::ifstream Sortfile("../../engorgio_sort.csv", std::ios::app);
@@ -34,7 +26,9 @@ int main(int argc, char *argv[])
     }
     Sortfile.close();
     std::vector<double> sort_time;
-    sort_time = bitonic_sort_modular(8, 2, num_slots);
+    sort_time = bitonic_sort_modular(8, 2, 32768);
+
+    // sort_time.push_back(bitonic_sort_full_table_scan(8, 65536 * 2) + sort_time[15] * 2);
 
     for (size_t i = 1; i < csvData.size(); i++)
     {
@@ -55,7 +49,7 @@ int main(int argc, char *argv[])
     }
     outFile_sort.close();
     end = std::chrono::system_clock::now();
-    double total_time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    double total_time = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000;
     std::cout << "Sort test compute time:" << total_time << std::endl;
     return 0;
 }

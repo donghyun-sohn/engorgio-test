@@ -47,7 +47,20 @@ target_include_directories(topk_test
 target_link_libraries(topk_test ENGORGIO)
 
 add_executable(sync_test sync_test.cpp)
-target_include_directories(sync_test 
+target_include_directories(sync_test
     PUBLIC ${CMAKE_SOURCE_DIR}/src
 )
 target_link_libraries(sync_test ENGORGIO)
+
+add_executable(bench_e2 bench_e2.cpp)
+target_include_directories(bench_e2
+    PUBLIC ${CMAKE_SOURCE_DIR}/src
+    PUBLIC ${CMAKE_SOURCE_DIR}/test
+)
+target_link_libraries(bench_e2 ENGORGIO)
+
+add_executable(bench_e3 bench_e3.cpp)
+target_include_directories(bench_e3
+    PUBLIC ${CMAKE_SOURCE_DIR}/src
+)
+target_link_libraries(bench_e3 ENGORGIO)

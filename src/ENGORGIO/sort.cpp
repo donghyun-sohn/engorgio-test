@@ -1757,6 +1757,7 @@ namespace openfhe
         auto keyPair = cc->KeyGen();
         usint ringDim = cc->GetRingDimension();
         int length = ringDim / 2;
+        std::cout << "ringDim = " << ringDim << ", slots = " << length << ", multDepth = " << multDepth << std::endl;
         std::random_device seed_gen;
         std::default_random_engine engine(seed_gen());
         std::uniform_int_distribution<int> message(0, precision);
@@ -2011,7 +2012,7 @@ namespace openfhe
     // 4096
     double sync_test_small(int plain_bits, int num_slots)
     {
-        std::cout << num_slots << " records sync test " << std::endl;
+        std::cout << num_slots << " records sync test" << std::endl;
         CCParams<CryptoContextCKKSRNS> parameters;
 
         parameters.SetSecurityLevel(HEStd_128_classic);
@@ -2057,6 +2058,7 @@ namespace openfhe
         auto keyPair = cc->KeyGen();
         usint ringDim = cc->GetRingDimension();
         int length = ringDim / 2;
+        std::cout << "ringDim = " << ringDim << ", slots = " << length << ", multDepth = " << multDepth << std::endl;
         cc->EvalMultKeyGen(keyPair.secretKey);
 
         std::vector<int> rotstep;

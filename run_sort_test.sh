@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# HomSort benchmark: 4, 16, 64, 256, 1024, 4096, 16384 records. Output tee'd to timestamped log.
+# HomSort benchmark: 6005, 60175, 600572 records. Output tee'd to timestamped log.
 set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN="${DIR}/build/bin/sort_test"
+if [[ -x "${DIR}/build/bin/sort_test" ]]; then
+    BIN="${DIR}/build/bin/sort_test"
+elif [[ -x "${DIR}/bin/sort_test" ]]; then
+    BIN="${DIR}/bin/sort_test"
+else
+    echo "Binary not found. Run: cmake . && make sort_test -j4 (or build/)"
+    exit 1
+fi
 TS=$(date +%Y%m%d_%H%M%S)
 LOG="${DIR}/sort_test_${TS}.log"
 
-if [[ ! -x "$BIN" ]]; then
-    echo "Binary not found: $BIN (run: cd build && make sort_test -j4)" >&2
-    exit 1
-fi
-
-echo "===== Sort test (4,16,64,256,1024,4096,16384) -> $LOG ====="
-for N in 4 16 64 256 1024 4096 16384; do
+echo "===== Sort test (6005,60175,600572) -> $LOG ====="
+for N in 6005 60175 600572; do
     echo ""
     echo "========== $N records =========="
     "$BIN" "$N" 2>&1
