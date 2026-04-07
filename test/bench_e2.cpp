@@ -87,35 +87,20 @@ int main(int argc, char *argv[])
     std::cout << "Q12 multDepth = 30" << std::endl;
     std::cout << "========================================" << std::endl;
 
-    std::chrono::system_clock::time_point t0, t1;
-    double actual_ms, amortized_ms;
-
     // --- Q1 ---
     std::cout << std::endl << ">>> Running Q1 <<<" << std::endl;
-    t0 = std::chrono::system_clock::now();
-    amortized_ms = Eval_E2E_q1(records_num);
-    t1 = std::chrono::system_clock::now();
-    actual_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-    std::cout << "Q1_actual_ms: " << actual_ms << std::endl;
-    std::cout << "Q1_amortized_ms: " << amortized_ms << std::endl;
+    double q1_ms = Eval_E2E_q1(records_num);
+    std::cout << "Q1_e2e_ms: " << q1_ms << std::endl;
 
     // --- Q6 ---
     std::cout << std::endl << ">>> Running Q6 <<<" << std::endl;
-    t0 = std::chrono::system_clock::now();
-    amortized_ms = Eval_E2E_q6(records_num);
-    t1 = std::chrono::system_clock::now();
-    actual_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-    std::cout << "Q6_actual_ms: " << actual_ms << std::endl;
-    std::cout << "Q6_amortized_ms: " << amortized_ms << std::endl;
+    double q6_ms = Eval_E2E_q6(records_num);
+    std::cout << "Q6_e2e_ms: " << q6_ms << std::endl;
 
     // --- Q12 ---
     std::cout << std::endl << ">>> Running Q12 <<<" << std::endl;
-    t0 = std::chrono::system_clock::now();
-    amortized_ms = Eval_E2E_q12(records_num);
-    t1 = std::chrono::system_clock::now();
-    actual_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
-    std::cout << "Q12_actual_ms: " << actual_ms << std::endl;
-    std::cout << "Q12_amortized_ms: " << amortized_ms << std::endl;
+    double q12_ms = Eval_E2E_q12(records_num);
+    std::cout << "Q12_e2e_ms: " << q12_ms << std::endl;
 
     std::cout << std::endl << "========================================" << std::endl;
     std::cout << "E2 complete." << std::endl;
